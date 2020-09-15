@@ -1,22 +1,57 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Sep  9 14:26:42 2020
+import os, sys, re
 
-@author: calvar13
-"""
+def ExecuteProcess(command):
+    pid = os.getpid()
 
-#! /usr/bin/env python3
-import os, sys, re, time
+    os.write(1, ("About to fork (pid:%d)\n" % pid).encode())
 
-run = True
-print("Please enter a command. 'help' returns command formatting help. 'quit' exits the program.") 
-
-while run:
-    cmd = input("$ ")
-    if cmd == "quit":
-        print("Quitting. Thank you!")
-        sys.exit(1)
-    elif cmd == "help":
-        print("\tFormat: [cmd][arg]\n\tquit: 'quit'")
+    rc = os.fork()
     
+    if rc < 0:
+        os.write(2, ("fork failed, returning %d\n" % rc).encode())
+        sys.exit(1)
+
+    elif rc == 0:                   # child
+        os.write(1, ("Child: My pid==%d.  Parent's pid=%d\n" % 
+                (os.getpid(), pid)).encode())
+        command = command.split()
+        args = command
+        for dir in re.split(":", os.environ['PATH']): # try each directory in the path
+            program = "%s/%s" % (dir, args[0])
+            try:
+                os.execve(program, args, os.environ) # try to exec program
+            except FileNotFoundError:             # ...expected
+                pass                              # ...fail quietly
+
+        os.write(2, ("Child:    Could not exec %s\n" % args[0]).encode())
+        sys.exit(1)                 # terminate with error
+
+    else:                           # parent (forked ok)
+        os.write(1, ("Parent: My pid=%d.  Child's pid=%d\n" % 
+                 (pid, rc)).encode())
+        childPidCode = os.wait()
+        os.write(1, ("Parent: Child %d terminated with exit code %d\n" % 
+                childPidCode).encode())
+
+while True:
+    command = input()
+    
+    if "cd" in command:
+        command = command.split("cd")[1].strip()
+        try:
+            os.chdir(command)
+            os.write(1, (os.getcwd() + " ").encode())
+        except FileNotFoundError:
+            os.write(1, ("file not found\n").encode())
+        continue
+        
+    if "ls" in command:
+        print(os.listdir())
+        continue
+ 
+    if "exit" in command:
+        sys.exit(1)
+    
+    if "<" in command:
+        
+    ExecuteProcess(command)
