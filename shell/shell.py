@@ -113,4 +113,48 @@ while (1):
         else:
             os.wait()
 
+    elif ">" in response:#redirect to file
+        io=response.split(">")
+        io[0]=io[0].strip()
+        io[1]=io[1].strip()
+        tokens=io[0].split(" ",1)#the command is only the first half
+        if tokens[0] == "exit":
+            print("Now exiting shell")
+            sys.exit()
+        elif tokens[0] == "cd":
+            if len(tokens)>1: 
+                try:
+                    os.chdir(tokens[1])
+                    os.write(1, os.getcwd().encode())
+                except FileNotFoundError:
+                    print ("No such file or folder")
+                    pass
+            else:
+                if "HOME" in os.environ:#couldn't remember if you have to export HOME
+                    os.chdir(os.environ["HOME"])
+                else:
+                    pass
+        else:
+            rc = os.fork()
+            if rc==0:
+                if response!="":
+                    os.close(1)#closing to allow redirection
+                    sys.stdout=open(io[1],"w")#redirects output to the file
+                    os.set_inheritable(1,True)#passes on file descriptor to the executed program
+                    try:#in case the whole path is given
+                        os.execve(tokens[0],tokens,os.environ)
+                    except FileNotFoundError:
+                        pass
+                    for dir in re.split(":",os.environ["PATH"]):#searches for program in PATH
+                        program= "%s/%s" % (dir,tokens[0])
+                        try:
+                            os.execve(program,tokens,os.environ)
+                        except FileNotFoundError:
+                            pass
+                    print(tokens[0] + ": command not found.")
+                    sys.exit()#exits in case not found
+                else:
+                    sys.exit()#if empty string
+            else:
+                os.wait()#waits for child to finish to accept more input
     
