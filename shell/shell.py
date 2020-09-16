@@ -157,4 +157,41 @@ while (1):
                     sys.exit()#if empty string
             else:
                 os.wait()#waits for child to finish to accept more input
-    
+    else:# if there are no pipes or redirections
+        tokens=response.split(" ",1)
+        if tokens[0] == "exit":
+            print("Now exiting shell")
+            sys.exit()
+        elif tokens[0] == "cd":
+            if len(tokens)>1: 
+                try:
+                    os.chdir(tokens[1])
+                    os.write(1, os.getcwd().encode())
+                except FileNotFoundError:
+                    print ("No such file or folder")
+                    pass
+            else:
+                if "HOME" in os.environ:#couldn't remember if you have to export HOME or not
+                    os.chdir(os.environ["HOME"])
+                else:
+                    pass
+        else:
+            rc = os.fork()
+            if rc==0:
+                if response!="":#this handles \n characters by themselves
+                    try:#in case the whole path is given
+                        os.execve(tokens[0],tokens,os.environ)
+                    except FileNotFoundError:
+                        pass
+                    for dir in re.split(":",os.environ["PATH"]):#searches for the program in PATH
+                        program= "%s/%s" % (dir,tokens[0])
+                        try:
+                            os.execve(program,tokens,os.environ)
+                        except FileNotFoundError:
+                            pass
+                    print(tokens[0] + ": command not found.")  
+                    sys.exit()#exits in case it's not found
+                else:
+                    sys.exit()#exits if empty string
+            else:
+                os.wait()#waits for child to finish to accept more input
