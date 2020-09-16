@@ -1,57 +1,67 @@
-import os, sys, re
+#!/usr/bin/env python3
 
-def ExecuteProcess(command):
-    pid = os.getpid()
+import os,sys,re
 
-    os.write(1, ("About to fork (pid:%d)\n" % pid).encode())
-
-    rc = os.fork()
+pid=os.getpid()
+exit = False
+if "PS1" in os.environ:
+    ps1=os.environ["PS1"]
+else:
+    ps1="$ "
+response = ""
+while (1):
+    tokens = None
+    try:
+        response = input(ps1)
+    except EOFError:
+        sys.exit()
+        pass
+    response = response.strip()
+    if "|" in response:
+        commands=response.split("|")#since we only need to test 1 pipe 
+        commands[0],commands[1]=commands[0].strip(),commands[1].strip()
+        rc = os.fork()
+        if rc==0:
+            pr,pw=os.pipe()
+            for f in (pr,pw):
+                os.set_inheritable(f,True)
+            piping=os.fork()#forking twice 
+            if piping==0:#child is sending output to second child
+                os.close(1)#snippet modified from pipe demo
+                os.dup2(pw,1)
+                for fd in (pr,pw):
+                    os.close(fd)
+                tokens=commands[0].split(" ",1)#tokenizing args
+                try:#in case the whole path is given
+                    os.execve(tokens[0],tokens,os.environ)
+                except FileNotFoundError:
+                    pass
+                for dir in re.split(":",os.environ["PATH"]):#searching for program in PATH
+                    program= "%s/%s" % (dir,tokens[0])
+                    try:
+                        os.execve(program,tokens,os.environ)
+                    except FileNotFoundError:
+                        pass
+                    print(tokens[0] + ": command not found.") 
+            else:#second child receives the output of first child
+                os.wait()
+                os.close(0)#closed to allow piping
+                os.dup2(pr,0)
+                for fd in (pr,pw):
+                    os.close(fd)
+                tokens=commands[1].split(" ",1)#tokenizing the args
+                try:#in case the whole path is given up front
+                    os.execve(tokens[0],tokens,os.environ)
+                except FileNotFoundError:
+                    pass
+                for dir in re.split(":",os.environ["PATH"]):#searching for the program in PATH.
+                    program= "%s/%s" % (dir,tokens[0])
+                    try:
+                        os.execve(program,tokens,os.environ)
+                    except FileNotFoundError:
+                        pass
+                print(tokens[0] + ": command not found.")
+                sys.exit()
+        else:
+            os.wait()#waits for children to finish to accept more commands
     
-    if rc < 0:
-        os.write(2, ("fork failed, returning %d\n" % rc).encode())
-        sys.exit(1)
-
-    elif rc == 0:                   # child
-        os.write(1, ("Child: My pid==%d.  Parent's pid=%d\n" % 
-                (os.getpid(), pid)).encode())
-        command = command.split()
-        args = command
-        for dir in re.split(":", os.environ['PATH']): # try each directory in the path
-            program = "%s/%s" % (dir, args[0])
-            try:
-                os.execve(program, args, os.environ) # try to exec program
-            except FileNotFoundError:             # ...expected
-                pass                              # ...fail quietly
-
-        os.write(2, ("Child:    Could not exec %s\n" % args[0]).encode())
-        sys.exit(1)                 # terminate with error
-
-    else:                           # parent (forked ok)
-        os.write(1, ("Parent: My pid=%d.  Child's pid=%d\n" % 
-                 (pid, rc)).encode())
-        childPidCode = os.wait()
-        os.write(1, ("Parent: Child %d terminated with exit code %d\n" % 
-                childPidCode).encode())
-
-while True:
-    command = input()
-    
-    if "cd" in command:
-        command = command.split("cd")[1].strip()
-        try:
-            os.chdir(command)
-            os.write(1, (os.getcwd() + " ").encode())
-        except FileNotFoundError:
-            os.write(1, ("file not found\n").encode())
-        continue
-        
-    if "ls" in command:
-        print(os.listdir())
-        continue
- 
-    if "exit" in command:
-        sys.exit(1)
-    
-    if "<" in command:
-        
-    ExecuteProcess(command)
